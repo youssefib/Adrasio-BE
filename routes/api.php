@@ -132,8 +132,12 @@ Route::prefix('v1')->group(function () {
 
                     // Course classes + sessions (parameters() maps {courseClass} → $courseClass)
                     Route::get('classes/availability',                      [CourseClassController::class, 'checkAvailability']);
+                    // Distinct route names ('course.classes.*') so they don't collide
+                    // with the regular classrooms apiResource ('classes.*') — required
+                    // for route:cache to serialize (names must be unique).
                     Route::apiResource('classes', CourseClassController::class)
-                        ->parameters(['classes' => 'courseClass']);
+                        ->parameters(['classes' => 'courseClass'])
+                        ->names('course.classes');
                     Route::put('classes/{courseClass}/sessions',             [CourseClassController::class, 'updateSessions']);
                     Route::get('classes/{courseClass}/monthly-status',       [MonthlyStatusController::class, 'forClass']);
 
