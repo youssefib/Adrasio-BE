@@ -38,17 +38,14 @@ class SubscriptionController extends Controller
     {
         $data = $r->validate([
             'plan_id'         => 'required|exists:subscription_plans,id',
-            'duration_months' => 'required|in:3,6,12',
+            // Yearly-only billing: 12 months is the sole option.
+            'duration_months' => 'required|in:12',
         ]);
 
         $plan = SubscriptionPlan::findOrFail($data['plan_id']);
 
-        // Compute amount based on duration
-        $amount = match ((int) $data['duration_months']) {
-            3  => $plan->price_3months,
-            6  => $plan->price_6months,
-            12 => $plan->price_yearly,
-        };
+        // Yearly billing only — amount is always the annual price.
+        $amount = $plan->price_yearly;
 
         $schoolId = $r->user()->school_id;
 

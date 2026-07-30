@@ -13,36 +13,40 @@ class SubscriptionSeeder extends Seeder
         // Remove legacy plans (basic / standard / premium) left over from earlier seeders
         \App\Models\SubscriptionPlan::whereIn('slug', ['basic', 'standard', 'premium'])->delete();
 
-        // Plan 1: Starter
+        // Yearly-only billing: only price_yearly is offered. The 3/6-month
+        // columns are kept in sync with the yearly price as defense-in-depth
+        // (the request endpoint also restricts duration to 12 months).
+
+        // Plan 1: Essentiel — 990 MAD/an (slug kept as 'starter' for stable plan_id references)
         SubscriptionPlan::updateOrCreate(['slug' => 'starter'], [
-            'name'                  => 'Starter',
-            'description'           => 'Pour les petites structures — un seul mode scolaire, accès directeur uniquement.',
+            'name'                  => 'Essentiel',
+            'description'           => "L'essentiel pour gérer votre école au quotidien : élèves, classes, présence et paiements.",
             'max_students'          => 100,
-            'max_teachers'          => 10,
-            'max_classes'           => 10,
-            'storage_limit_mb'      => 0,
-            'price_monthly'         => 50,
-            'price_yearly'          => 480,
-            'price_3months'         => 150,
-            'price_6months'         => 270,
-            'allows_both_types'     => false,
-            'allows_file_upload'    => false,
-            'allows_teacher_portal' => false,
+            'max_teachers'          => 20,
+            'max_classes'           => 20,
+            'storage_limit_mb'      => 1024,
+            'price_monthly'         => 83,
+            'price_yearly'          => 990,
+            'price_3months'         => 990,
+            'price_6months'         => 990,
+            'allows_both_types'     => true,
+            'allows_file_upload'    => true,
+            'allows_teacher_portal' => true,
             'is_active'             => true,
         ]);
 
-        // Plan 2: Pro
+        // Plan 2: Pro — 2 490 MAD/an
         SubscriptionPlan::updateOrCreate(['slug' => 'pro'], [
             'name'                  => 'Pro',
-            'description'           => 'Accès complet — les deux modes, portail enseignant, téléversement de fichiers.',
-            'max_students'          => null,
+            'description'           => 'Pour les établissements qui veulent aller plus loin : finances avancées, paie et personnalisation.',
+            'max_students'          => 1000,
             'max_teachers'          => null,
             'max_classes'           => null,
             'storage_limit_mb'      => 5120,
-            'price_monthly'         => 100,
-            'price_yearly'          => 960,
-            'price_3months'         => 300,
-            'price_6months'         => 540,
+            'price_monthly'         => 208,
+            'price_yearly'          => 2490,
+            'price_3months'         => 2490,
+            'price_6months'         => 2490,
             'allows_both_types'     => true,
             'allows_file_upload'    => true,
             'allows_teacher_portal' => true,
