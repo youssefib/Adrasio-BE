@@ -16,8 +16,9 @@ return Application::configure(basePath: dirname(__DIR__))
             // Custom role middleware — checks the `role` column (single source of truth).
             // Replaces Spatie's RoleMiddleware so routes never break when model_has_roles
             // pivot is out of sync with the role column.
-            'role'       => \App\Http\Middleware\RequireRole::class,
-            'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
+            'role'          => \App\Http\Middleware\RequireRole::class,
+            'permission'    => \Spatie\Permission\Middleware\PermissionMiddleware::class,
+            'portal.access' => \App\Http\Middleware\EnsurePortalAccess::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -289,6 +289,10 @@ class AccountingController extends Controller
             'supplies'    => 'Fournitures',
             'equipment'   => 'Équipement',
             'maintenance' => 'Maintenance',
+            'rent'        => 'Loyer',
+            'utilities'   => 'Eau / Électricité',
+            'internet'    => 'Internet / WiFi',
+            'printing'    => 'Impression',
             'other'       => 'Autres',
         ];
 
@@ -432,6 +436,10 @@ class AccountingController extends Controller
             'supplies'    => ['6141', 'Fournitures de bureau'],
             'equipment'   => ['6143', 'Matériel et équipement'],
             'maintenance' => ['6144', 'Maintenance'],
+            'rent'        => ['6131', 'Locations et charges locatives'],
+            'utilities'   => ['6125', 'Eau et électricité'],
+            'internet'    => ['6146', 'Frais de télécommunication'],
+            'printing'    => ['6142', 'Impression et reprographie'],
             'other'       => ['6199', 'Autres charges'],
         ];
 

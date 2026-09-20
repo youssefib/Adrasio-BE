@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api\School;
 
 use App\Http\Controllers\Controller;
-use App\Models\ActivityLog;
 use App\Models\CourseEnrollment;
+use App\Models\User;
 use App\Traits\ScopedToSchool;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -50,18 +50,14 @@ class DashboardController extends Controller
         $totalFiles   = $school->files()->count();
         $totalFileMb  = round($school->files()->sum('size_bytes') / 1024 / 1024, 2);
 
-        // ── Activity stats ────────────────────────────────────────────────────
-        $activeUsers24h = ActivityLog::where('school_id', $school->id)
-            ->where('action', 'user.login')
-            ->where('created_at', '>=', $now->copy()->subHours(24))
-            ->distinct('user_id')
-            ->count('user_id');
+        // ── Activity stats (based on last login) ──────────────────────────────
+        $activeUsers24h = User::where('school_id', $school->id)
+            ->where('last_login_at', '>=', $now->copy()->subHours(24))
+            ->count();
 
-        $activeUsers7d = ActivityLog::where('school_id', $school->id)
-            ->where('action', 'user.login')
-            ->where('created_at', '>=', $now->copy()->subDays(7))
-            ->distinct('user_id')
-            ->count('user_id');
+        $activeUsers7d = User::where('school_id', $school->id)
+            ->where('last_login_at', '>=', $now->copy()->subDays(7))
+            ->count();
 
         // ── Course-school: unpaid students for current month ──────────────────
         $courseUnpaidCount = 0;

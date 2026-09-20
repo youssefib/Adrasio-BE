@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api\System;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\System\UpdateSchoolRequest;
 use App\Http\Requests\System\UpdateSubscriptionRequest;
-use App\Models\ActivityLog;
 use App\Models\School;
 use App\Models\SubscriptionPlan;
 use App\Models\User;
@@ -38,15 +37,8 @@ class SystemAdminController extends Controller
             ->groupBy('roles.name')
             ->pluck('total', 'role');
 
-        $activeUsers24h = ActivityLog::where('action', 'user.login')
-            ->where('created_at', '>=', $now->copy()->subHours(24))
-            ->distinct('user_id')
-            ->count('user_id');
-
-        $activeUsers7d = ActivityLog::where('action', 'user.login')
-            ->where('created_at', '>=', $now->copy()->subDays(7))
-            ->distinct('user_id')
-            ->count('user_id');
+        $activeUsers24h = User::where('last_login_at', '>=', $now->copy()->subHours(24))->count();
+        $activeUsers7d  = User::where('last_login_at', '>=', $now->copy()->subDays(7))->count();
 
         return response()->json([
             'schools_by_status' => $schoolsByStatus,

@@ -79,6 +79,14 @@ class AuthController extends Controller
             if (in_array($user->school->status, ['suspended', 'cancelled'])) {
                 return response()->json(['message' => 'School account is inactive.', 'code' => 'SCHOOL_INACTIVE'], 403);
             }
+
+            // Per-school portal switches: block disabled teachers/students at login.
+            if ($user->role === 'teacher' && ! $user->school->teachers_access_enabled) {
+                return response()->json(['message' => 'Teacher access is currently disabled for this school.', 'code' => 'PORTAL_DISABLED'], 403);
+            }
+            if ($user->role === 'student' && ! $user->school->students_access_enabled) {
+                return response()->json(['message' => 'Student access is currently disabled for this school.', 'code' => 'PORTAL_DISABLED'], 403);
+            }
         }
 
         $user->tokens()->delete();

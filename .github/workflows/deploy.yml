@@ -1,0 +1,55 @@
+# Push-to-deploy for the Adrasio Laravel backend.
+#
+# On push to the `production` branch, GitHub SSHes into the Hetzner VPS and runs
+# the existing deploy.sh (pull code → build image → back up DB → migrate → cache
+# → restart), then checks /up.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   SSH_HOST         167.233.132.197
+#   SSH_PORT         5598
+#   SSH_USER         deploy
+#   SSH_PRIVATE_KEY  private key of a dedicated CI keypair (public key added to
+#                    the deploy user's ~/.ssh/authorized_keys on the server)
+#
+# Server prerequisites:
+#   - /opt/apps/adrasio-backend/.env exists, with REPO_BRANCH=production
+#   - deploy.sh + backup.sh are present and executable there
+
+name: Deploy backend (Hetzner)
+
+on:
+  push:
+    branches: [production]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ci
+          chmod 600 ~/.ssh/id_ci
+          ssh-keyscan -p "${{ secrets.SSH_PORT }}" -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy (build + migrate on server)
+        run: |
+          ssh -i ~/.ssh/id_ci -p "${{ secrets.SSH_PORT }}" \
+            -o StrictHostKeyChecking=yes \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            'cd /opt/apps/adrasio-backend && AUTO_CONFIRM=1 ./deploy.sh'
+
+      - name: Health check
+        run: |
+          for i in $(seq 1 10); do
+            if curl -fsS https://api.yo-madrassa.com/up > /dev/null; then
+              echo "App is healthy."; exit 0
+            fi
+            echo "Waiting for app to come up... attempt $i/10"; sleep 6
+          done
+          echo "Health check failed — app did not return healthy on /up"; exit 1

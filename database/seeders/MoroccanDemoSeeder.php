@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\ActivityLog;
 use App\Models\Classroom;
 use App\Models\File;
 use App\Models\Grade;
@@ -75,7 +74,6 @@ class MoroccanDemoSeeder extends Seeder
             $this->createFiles($school, $admin, $teachers, $grades, $classes);
             $this->createAttendance($school, $classes, $students);
             $this->createExpenses($school, $owner, $admin, $teachers);
-            $this->createActivityLogs($school, $owner, $admin, $teachers);
         });
 
         $this->command->info('[MoroccanDemoSeeder] Done.');
@@ -747,36 +745,4 @@ class MoroccanDemoSeeder extends Seeder
         }
     }
 
-    // ── Activity Logs ─────────────────────────────────────────────────────────
-
-    private function createActivityLogs(School $school, User $owner, User $admin, array $teachers): void
-    {
-        $now = now();
-        $logs = [
-            [$owner,   'school.setup',      'Groupe Scolaire Averroès — compte créé pour l\'année 2025-2026.',       $now->copy()->subDays(65)],
-            [$admin,   'users.imported',    '15 enseignants ajoutés (6 instituteurs primaire + 9 professeurs).',      $now->copy()->subDays(63)],
-            [$admin,   'grades.created',    '12 niveaux configurés — cycle primaire, collégial et lycéen.',           $now->copy()->subDays(62)],
-            [$admin,   'rooms.created',     '14 salles enregistrées (primaire, secondaire, labo, info, sport).',      $now->copy()->subDays(61)],
-            [$admin,   'classrooms.created','12 classes créées pour l\'année 2025-2026.',                             $now->copy()->subDays(60)],
-            [$admin,   'timetable.published','Emploi du temps publié pour 1AC-A et TC-A.',                            $now->copy()->subDays(59)],
-            [$admin,   'students.imported', '63 dossiers élèves importés et inscrits.',                               $now->copy()->subDays(57)],
-            [$owner,   'user.login',        'Connexion du directeur M. Abdelaziz Benkirane.',                         $now->copy()->subDays(30)],
-            [$admin,   'payments.recorded', 'Paiements septembre 2025 enregistrés pour toutes les classes.',          $now->copy()->subDays(28)],
-            [$admin,   'payments.recorded', 'Paiements octobre et novembre 2025 enregistrés.',                        $now->copy()->subDays(15)],
-            [$teachers[6], 'file.uploaded', 'Exercices Maths 1AC-A — Séquence 1 déposés.',                           $now->copy()->subDays(10)],
-            [$admin,   'user.login',        'Connexion de Mme Khadija Senhaji (administration).',                     $now->copy()->subDays(1)],
-        ];
-        foreach ($logs as [$user, $action, $description, $createdAt]) {
-            ActivityLog::create([
-                'school_id'   => $school->id,
-                'user_id'     => $user->id,
-                'action'      => $action,
-                'description' => $description,
-                'ip_address'  => '197.230.' . rand(1, 254) . '.' . rand(1, 254),
-                'user_agent'  => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'metadata'    => null,
-                'created_at'  => $createdAt,
-            ]);
-        }
-    }
 }

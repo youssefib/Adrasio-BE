@@ -28,6 +28,8 @@ class UserController extends Controller
         $users = $school->users()
             ->with('roles')
             ->when($request->role, fn ($q) => $q->role($request->role))
+            // Staff listing: exclude students (they live on the Students page).
+            ->when($request->boolean('staff_only'), fn ($q) => $q->whereIn('users.role', ['school_owner', 'admin', 'teacher']))
             ->when($request->search, fn ($q) => $q->where('name', 'like', "%{$request->search}%")
                 ->orWhere('email', 'like', "%{$request->search}%"))
             ->orderBy('name')
@@ -49,9 +51,10 @@ class UserController extends Controller
                 'school_id' => $school->id,
                 'role'      => $data['role'],
                 'name'      => $data['name'],
-                'email'     => $data['email'],
+                'email'     => $data['email'] ?? null,
                 'phone'     => $data['phone'] ?? null,
-                'password'  => Hash::make($data['password']),
+                // No password for credential-less records (portal access disabled).
+                'password'  => isset($data['password']) ? Hash::make($data['password']) : null,
             ]);
 
             $user->assignRole($data['role']);

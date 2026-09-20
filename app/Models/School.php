@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Storage;
 
 class School extends Model
 {
@@ -25,16 +26,28 @@ class School extends Model
         'timezone',
         'status',
         'school_type',
+        'students_access_enabled',
+        'teachers_access_enabled',
         'trial_ends_at',
         'subscription_ends_at',
     ];
 
+    protected $appends = ['logo_url'];
+
     protected function casts(): array
     {
         return [
-            'trial_ends_at'        => 'datetime',
-            'subscription_ends_at' => 'datetime',
+            'trial_ends_at'           => 'datetime',
+            'subscription_ends_at'    => 'datetime',
+            'students_access_enabled' => 'boolean',
+            'teachers_access_enabled' => 'boolean',
         ];
+    }
+
+    /** Public URL to the school logo, or null. */
+    public function getLogoUrlAttribute(): ?string
+    {
+        return $this->logo ? Storage::disk('public')->url($this->logo) : null;
     }
 
     // ── Relations ─────────────────────────────────────────────────────────────
@@ -79,11 +92,6 @@ class School extends Model
         return $this->hasMany(StudentProfile::class);
     }
 
-    public function activityLogs(): HasMany
-    {
-        return $this->hasMany(ActivityLog::class);
-    }
-
     public function courses(): HasMany
     {
         return $this->hasMany(Course::class);
@@ -97,6 +105,16 @@ class School extends Model
     public function courseEnrollments(): HasMany
     {
         return $this->hasMany(CourseEnrollment::class);
+    }
+
+    public function classGroups(): HasMany
+    {
+        return $this->hasMany(ClassGroup::class);
+    }
+
+    public function classGroupEnrollments(): HasMany
+    {
+        return $this->hasMany(ClassGroupEnrollment::class);
     }
 
     public function teacherCommissions(): HasMany

@@ -4,10 +4,10 @@ namespace App\Http\Controllers\Api\School;
 
 use App\Http\Controllers\Controller;
 use App\Models\CourseClass;
-use App\Models\CourseEnrollment;
 use App\Models\PayrollEntry;
 use App\Models\School;
 use App\Models\User;
+use App\Services\CourseRevenueService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -65,11 +65,12 @@ class PayrollController extends Controller
         $school   = $this->school();
         $createdBy = Auth::id();
 
-        // Fetch staff to generate payroll for
+        $svc = new CourseRevenueService($schoolId);
+
+        // Consider all staff (teachers may earn only a % with no base); zero-total
+        // staff are skipped below.
         $staffQuery = User::where('school_id', $schoolId)
-            ->whereNotIn('role', ['student'])
-            ->whereNotNull('base_salary')
-            ->where('base_salary', '>', 0);
+            ->whereNotIn('role', ['student']);
 
         if ($r->filled('role')) {
             $staffQuery->where('role', $r->role);
@@ -94,7 +95,13 @@ class PayrollController extends Controller
                 continue;
             }
 
-            [$base, $variable] = $this->calculateSalary($user, $month, $year, $school);
+            [$base, $variable] = $this->calculateSalary($user, $month, $year, $school, $svc);
+
+            // Nothing to pay this month → don't create an empty payslip.
+            if ($base + $variable <= 0) {
+                $skipped[] = $user->id;
+                continue;
+            }
 
             $entry = PayrollEntry::create([
                 'school_id'       => $schoolId,
@@ -300,76 +307,43 @@ class PayrollController extends Controller
      * Calculate base + variable salary for a user for a given month.
      * Returns [base, variable].
      *
-     * base_plus_per_class:
-     *   variable = active_classes_count × salary_variable_rate (MAD/class)
-     *
-     * base_plus_per_student — two sub-modes:
-     *   salary_rate_is_percentage = false  → fixed MAD per active student
-     *     variable = Σ_per_class ( active_students × rate )
-     *
-     *   salary_rate_is_percentage = true   → percentage of class monthly_fee per student
-     *     variable = Σ_per_class ( active_students × class.monthly_fee × rate / 100 )
-     *     This means the teacher earns X% of each class's revenue they generate.
+     * Unified model: variable = Σ over the teacher's active classes of
+     * (class monthly revenue × the class's teacher_share_pct). Class revenue
+     * includes both individual enrollments and pack members' per-class shares.
      */
-    private function calculateSalary(User $user, int $month, int $year, School $school): array
+    private function calculateSalary(User $user, int $month, int $year, School $school, CourseRevenueService $svc): array
     {
         $base = (float) ($user->base_salary ?? 0);
 
-        if (
-            $user->salary_type === 'fixed'
-            || ! ($user->salary_variable_rate > 0)
-            || ! in_array($school->school_type, ['course', 'both'], true)
-        ) {
+        if (! in_array($school->school_type, ['course', 'both'], true)) {
             return [$base, 0.0];
         }
 
-        $rate = (float) $user->salary_variable_rate;
-
-        if ($user->salary_type === 'base_plus_per_class') {
-            $classCount = CourseClass::where('school_id', $school->id)
-                ->where('teacher_id', $user->id)
-                ->where('status', 'active')
-                ->count();
-            return [$base, $classCount * $rate];
-        }
-
-        // base_plus_per_student — get each active class the teacher owns
         $classes = CourseClass::where('school_id', $school->id)
             ->where('teacher_id', $user->id)
             ->where('status', 'active')
-            ->get(['id', 'monthly_fee']);
+            ->with(['enrollments.monthlyStatuses', 'enrollments.groupEnrollment'])
+            ->get();
 
         $variable = 0.0;
-
         foreach ($classes as $class) {
-            $activeStudents = CourseEnrollment::where('course_class_id', $class->id)
-                ->where('status', 'active')
-                ->count();
-
-            if ($user->salary_rate_is_percentage) {
-                // X % of the class monthly_fee per enrolled student
-                $variable += $activeStudents * ((float) $class->monthly_fee) * ($rate / 100.0);
-            } else {
-                // Fixed MAD amount per enrolled student
-                $variable += $activeStudents * $rate;
-            }
+            $income = $svc->classIncome($class, $year, $month);
+            $variable += $svc->teacherShare($class, $income);
         }
 
         return [$base, round($variable, 2)];
     }
 
     /**
-     * Return a preview of variable salary for a teacher given current classes/students.
-     * Used by the frontend salary settings form for live preview.
+     * Preview a teacher's pay for the current month under the base + % model.
+     * variable = Σ (class revenue × class teacher_share_pct). Used by the
+     * frontend salary form for a live preview.
      */
     public function salaryPreview(Request $r): JsonResponse
     {
         $r->validate([
-            'user_id'                   => 'required|exists:users,id',
-            'salary_type'               => 'required|in:fixed,base_plus_per_class,base_plus_per_student',
-            'base_salary'               => 'required|numeric|min:0',
-            'salary_variable_rate'      => 'nullable|numeric|min:0',
-            'salary_rate_is_percentage' => 'nullable|boolean',
+            'user_id'     => 'required|exists:users,id',
+            'base_salary' => 'nullable|numeric|min:0',
         ]);
 
         $user = User::where('id', $r->user_id)
@@ -377,69 +351,37 @@ class PayrollController extends Controller
             ->firstOrFail();
 
         $school = $this->school();
+        $svc    = new CourseRevenueService($this->schoolId());
+        $year   = now()->year;
+        $month  = now()->month;
 
-        // Temporarily hydrate user with preview values
-        $user->salary_type               = $r->salary_type;
-        $user->base_salary               = (float) $r->base_salary;
-        $user->salary_variable_rate      = (float) ($r->salary_variable_rate ?? 0);
-        $user->salary_rate_is_percentage = (bool)  ($r->salary_rate_is_percentage ?? false);
+        $base = $r->filled('base_salary') ? (float) $r->base_salary : (float) ($user->base_salary ?? 0);
 
-        [$base, $variable] = $this->calculateSalary($user, now()->month, now()->year, $school);
+        $classes = CourseClass::where('school_id', $school->id)
+            ->where('teacher_id', $user->id)
+            ->where('status', 'active')
+            ->with(['enrollments.monthlyStatuses', 'enrollments.groupEnrollment'])
+            ->get();
 
-        // Also return class-by-class breakdown for the UI
+        $variable  = 0.0;
         $breakdown = [];
-        if ($r->salary_type === 'base_plus_per_student' && $r->salary_variable_rate > 0) {
-            $classes = CourseClass::where('school_id', $school->id)
-                ->where('teacher_id', $user->id)
-                ->where('status', 'active')
-                ->get(['id', 'name', 'monthly_fee']);
+        foreach ($classes as $class) {
+            $income = $svc->classIncome($class, $year, $month);
+            $share  = $svc->teacherShare($class, $income);
+            $variable += $share;
 
-            foreach ($classes as $class) {
-                $students = CourseEnrollment::where('course_class_id', $class->id)
-                    ->where('status', 'active')
-                    ->count();
-
-                $rate = (float) $r->salary_variable_rate;
-                if ($r->salary_rate_is_percentage) {
-                    $classVar = $students * ((float) $class->monthly_fee) * ($rate / 100.0);
-                    $pct      = $rate;
-                } else {
-                    $classVar = $students * $rate;
-                    // Back-calculate equivalent % from this class's fee
-                    $pct = $class->monthly_fee > 0
-                        ? round($rate / (float) $class->monthly_fee * 100, 1)
-                        : null;
-                }
-
-                $breakdown[] = [
-                    'class_name'   => $class->name,
-                    'monthly_fee'  => (float) $class->monthly_fee,
-                    'students'     => $students,
-                    'class_variable'  => round($classVar, 2),
-                    'equivalent_pct'  => $pct,
-                ];
-            }
-        } elseif ($r->salary_type === 'base_plus_per_class' && $r->salary_variable_rate > 0) {
-            $classes = CourseClass::where('school_id', $school->id)
-                ->where('teacher_id', $user->id)
-                ->where('status', 'active')
-                ->get(['id', 'name', 'monthly_fee']);
-
-            foreach ($classes as $class) {
-                $breakdown[] = [
-                    'class_name'     => $class->name,
-                    'monthly_fee'    => (float) $class->monthly_fee,
-                    'class_variable' => (float) $r->salary_variable_rate,
-                    'students'       => null,
-                    'equivalent_pct' => null,
-                ];
-            }
+            $breakdown[] = [
+                'class_name'        => $class->name,
+                'monthly_income'    => round($income, 2),
+                'teacher_share_pct' => (float) $class->teacher_share_pct,
+                'teacher_share'     => $share,
+            ];
         }
 
         return response()->json([
-            'base_amount'     => $base,
-            'variable_amount' => $variable,
-            'total_amount'    => $base + $variable,
+            'base_amount'     => round($base, 2),
+            'variable_amount' => round($variable, 2),
+            'total_amount'    => round($base + $variable, 2),
             'breakdown'       => $breakdown,
         ]);
     }

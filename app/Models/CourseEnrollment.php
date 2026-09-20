@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class CourseEnrollment extends Model
 {
     protected $fillable = [
-        'school_id', 'student_profile_id', 'course_class_id',
+        'school_id', 'student_profile_id', 'course_class_id', 'class_group_enrollment_id',
         'monthly_fee_override', 'enrolled_at', 'left_at', 'status', 'notes',
     ];
 
@@ -25,6 +25,10 @@ class CourseEnrollment extends Model
     public function school(): BelongsTo          { return $this->belongsTo(School::class); }
     public function studentProfile(): BelongsTo  { return $this->belongsTo(StudentProfile::class); }
     public function courseClass(): BelongsTo     { return $this->belongsTo(CourseClass::class); }
+    public function groupEnrollment(): BelongsTo { return $this->belongsTo(ClassGroupEnrollment::class, 'class_group_enrollment_id'); }
+
+    /** True when this enrollment is billed via a pack (not individually). */
+    public function isPackMember(): bool { return $this->class_group_enrollment_id !== null; }
 
     public function monthlyStatuses(): HasMany
     {

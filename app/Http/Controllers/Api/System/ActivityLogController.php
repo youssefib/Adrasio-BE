@@ -3,46 +3,51 @@
 namespace App\Http\Controllers\Api\System;
 
 use App\Http\Controllers\Controller;
-use App\Models\ActivityLog;
-use App\Traits\ScopedToSchool;
+use App\Services\ActivityLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
+/**
+ * System-admin only. Reads the file-based activity logs written by
+ * App\Services\ActivityLogger. The admin picks a school, then a month + day.
+ */
 class ActivityLogController extends Controller
 {
-    use ScopedToSchool;
-
     /**
-     * GET /api/v1/system/activity-logs  (system_admin only — sees all)
+     * GET /api/v1/system/school-logs/availability?school_id=
+     * Returns the months (and their days) that have logs for the school.
      */
-    public function systemLogs(Request $request): JsonResponse
+    public function availability(Request $request): JsonResponse
     {
-        $logs = ActivityLog::with(['user', 'school'])
-            ->when($request->school_id, fn ($q) => $q->where('school_id', $request->school_id))
-            ->when($request->action, fn ($q) => $q->where('action', $request->action))
-            ->when($request->from, fn ($q) => $q->where('created_at', '>=', $request->from))
-            ->when($request->to, fn ($q) => $q->where('created_at', '<=', $request->to))
-            ->orderByDesc('created_at')
-            ->paginate(50);
+        $data = $request->validate([
+            'school_id' => 'required|integer|exists:schools,id',
+        ]);
 
-        return response()->json($logs);
+        return response()->json(ActivityLogger::availability((int) $data['school_id']));
     }
 
     /**
-     * GET /api/v1/activity-logs  (school_owner / admin — scoped to their school)
+     * GET /api/v1/system/school-logs/entries?school_id=&date=YYYY-MM-DD&action=
+     * Returns the parsed log entries for a single day, newest first.
      */
-    public function schoolLogs(Request $request): JsonResponse
+    public function entries(Request $request): JsonResponse
     {
-        $school = $this->currentSchool($request);
+        $data = $request->validate([
+            'school_id' => 'required|integer|exists:schools,id',
+            'date'      => 'required|date_format:Y-m-d',
+            'action'    => 'sometimes|nullable|string|max:100',
+        ]);
 
-        $logs = ActivityLog::with('user')
-            ->where('school_id', $school->id)
-            ->when($request->action, fn ($q) => $q->where('action', $request->action))
-            ->when($request->from, fn ($q) => $q->where('created_at', '>=', $request->from))
-            ->when($request->to, fn ($q) => $q->where('created_at', '<=', $request->to))
-            ->orderByDesc('created_at')
-            ->paginate(50);
+        $entries = ActivityLogger::readDay(
+            (int) $data['school_id'],
+            $data['date'],
+            $data['action'] ?? null,
+        );
 
-        return response()->json($logs);
+        return response()->json([
+            'date'    => $data['date'],
+            'count'   => count($entries),
+            'entries' => $entries,
+        ]);
     }
 }

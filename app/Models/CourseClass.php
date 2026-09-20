@@ -4,18 +4,22 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class CourseClass extends Model
 {
     protected $fillable = [
         'school_id', 'course_id', 'course_level_id', 'teacher_id', 'room_id',
-        'name', 'monthly_fee', 'capacity', 'status',
+        'name', 'monthly_fee', 'teacher_share_pct', 'capacity', 'status',
     ];
 
     protected function casts(): array
     {
-        return ['monthly_fee' => 'decimal:2'];
+        return [
+            'monthly_fee'       => 'decimal:2',
+            'teacher_share_pct' => 'decimal:2',
+        ];
     }
 
     public function school(): BelongsTo     { return $this->belongsTo(School::class); }
@@ -37,6 +41,12 @@ class CourseClass extends Model
     public function commissions(): HasMany
     {
         return $this->hasMany(TeacherCommission::class);
+    }
+
+    /** Packs this class belongs to. */
+    public function groups(): BelongsToMany
+    {
+        return $this->belongsToMany(ClassGroup::class, 'class_group_members');
     }
 
     /** Active enrollments = status active and no left_at */

@@ -40,6 +40,7 @@ class CourseClassController extends Controller
             'room_id'         => 'nullable|integer',
             'name'            => 'required|string|max:120',
             'monthly_fee'     => 'required|numeric|min:0',
+            'teacher_share_pct' => 'nullable|numeric|min:0|max:100',
             'capacity'        => 'nullable|integer|min:1',
             'status'          => 'sometimes|in:active,inactive',
             'sessions'                        => 'nullable|array',
@@ -62,6 +63,7 @@ class CourseClassController extends Controller
             'room_id'         => $data['room_id'] ?? null,
             'name'            => $data['name'],
             'monthly_fee'     => $data['monthly_fee'],
+            'teacher_share_pct' => $data['teacher_share_pct'] ?? 0,
             'capacity'        => $data['capacity'] ?? null,
             'status'          => $data['status'] ?? 'active',
         ]);
@@ -87,13 +89,38 @@ class CourseClassController extends Controller
     {
         $this->assertOwns($request, $courseClass);
 
-        return response()->json(
-            $courseClass->load([
-                'course', 'level', 'teacher:id,name,email', 'room', 'sessions',
-                'enrollments.studentProfile.user',
-                'commissions.teacher:id,name',
-            ])->loadCount('enrollments', 'activeEnrollments')
-        );
+        $courseClass->load([
+            'course', 'level', 'teacher:id,name,email', 'room', 'sessions',
+            'enrollments.studentProfile.user',
+            'enrollments.groupEnrollment.group:id,name,monthly_price',
+        ])->loadCount('enrollments', 'activeEnrollments');
+
+        // Attach the per-class pack share to each pack-member enrollment so the
+        // class detail can show how much of a pack a student's slot represents.
+        $groupIds = $courseClass->enrollments
+            ->pluck('groupEnrollment.class_group_id')->filter()->unique();
+
+        if ($groupIds->isNotEmpty()) {
+            $counts = \DB::table('class_group_members')
+                ->whereIn('class_group_id', $groupIds)
+                ->selectRaw('class_group_id, count(*) as c')
+                ->groupBy('class_group_id')
+                ->pluck('c', 'class_group_id');
+
+            foreach ($courseClass->enrollments as $enrollment) {
+                $ge = $enrollment->groupEnrollment;
+                if ($ge && $ge->group) {
+                    $count = (int) ($counts[$ge->class_group_id] ?? 0);
+                    $price = (float) ($ge->price_override ?? $ge->group->monthly_price);
+                    $enrollment->pack = [
+                        'name'  => $ge->group->name,
+                        'share' => $count > 0 ? round($price / $count, 2) : 0,
+                    ];
+                }
+            }
+        }
+
+        return response()->json($courseClass);
     }
 
     public function update(Request $request, CourseClass $courseClass): JsonResponse
@@ -106,6 +133,7 @@ class CourseClassController extends Controller
             'room_id'         => 'nullable|integer',
             'name'            => 'sometimes|string|max:120',
             'monthly_fee'     => 'sometimes|numeric|min:0',
+            'teacher_share_pct' => 'sometimes|numeric|min:0|max:100',
             'capacity'        => 'nullable|integer|min:1',
             'status'          => 'sometimes|in:active,inactive',
         ]);

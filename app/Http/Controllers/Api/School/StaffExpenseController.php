@@ -46,7 +46,7 @@ class StaffExpenseController extends Controller
     {
         $data = $r->validate([
             'user_id'      => 'nullable|exists:users,id',
-            'category'     => 'required|in:salary,salary_advance,transport,supplies,equipment,maintenance,other',
+            'category'     => 'required|in:salary,salary_advance,transport,supplies,equipment,maintenance,rent,utilities,internet,printing,other',
             'description'  => 'required|string|max:255',
             'amount'       => 'required|numeric|min:0.01',
             'expense_date' => 'required|date',
@@ -66,7 +66,7 @@ class StaffExpenseController extends Controller
 
         $data = $r->validate([
             'user_id'      => 'nullable|exists:users,id',
-            'category'     => 'required|in:salary,salary_advance,transport,supplies,equipment,maintenance,other',
+            'category'     => 'required|in:salary,salary_advance,transport,supplies,equipment,maintenance,rent,utilities,internet,printing,other',
             'description'  => 'required|string|max:255',
             'amount'       => 'required|numeric|min:0.01',
             'expense_date' => 'required|date',

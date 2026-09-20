@@ -9,6 +9,9 @@ use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\PasswordResetController;
 use App\Http\Controllers\Api\School\AdditionalChargeController;
 use App\Http\Controllers\Api\School\AttendanceController;
+use App\Http\Controllers\Api\School\ClassGroupController;
+use App\Http\Controllers\Api\School\ClassGroupEnrollmentController;
+use App\Http\Controllers\Api\School\ClassGroupPaymentController;
 use App\Http\Controllers\Api\School\ClassroomController;
 use App\Http\Controllers\Api\School\CourseClassController;
 use App\Http\Controllers\Api\School\CourseController;
@@ -71,7 +74,9 @@ Route::prefix('v1')->group(function () {
             Route::post('subscription-requests/{subscriptionRequest}/approve', [SubscriptionRequestController::class, 'approve']);
             Route::post('subscription-requests/{subscriptionRequest}/reject', [SubscriptionRequestController::class, 'reject']);
 
-            Route::get('/activity-logs', [ActivityLogController::class, 'systemLogs']);
+            // Activity logs — file-based, picked by school + day
+            Route::get('/school-logs/availability', [ActivityLogController::class, 'availability']);
+            Route::get('/school-logs/entries',      [ActivityLogController::class, 'entries']);
 
             // System settings (trial period, etc.)
             Route::get('/settings',         [SystemAdminController::class, 'getSettings']);
@@ -82,6 +87,7 @@ Route::prefix('v1')->group(function () {
         Route::middleware([
             \App\Http\Middleware\SetTenantContext::class,
             \App\Http\Middleware\EnsureSchoolIsActive::class,
+            \App\Http\Middleware\EnsurePortalAccess::class,
         ])->group(function () {
 
             // School Owner + Admin
@@ -90,11 +96,12 @@ Route::prefix('v1')->group(function () {
                 Route::get('/',   [SchoolController::class, 'show']);
                 Route::patch('/', [SchoolController::class, 'update']);
 
+                // School logo
+                Route::post('/logo',   [SchoolController::class, 'uploadLogo']);
+                Route::delete('/logo', [SchoolController::class, 'deleteLogo']);
+
                 // Dashboard
                 Route::get('/dashboard', DashboardController::class);
-
-                // Activity logs (school-level)
-                Route::get('/activity-logs', [ActivityLogController::class, 'schoolLogs']);
 
                 // Users
                 Route::apiResource('users', UserController::class);
@@ -164,7 +171,21 @@ Route::prefix('v1')->group(function () {
 
                     // Revenue
                     Route::get('revenue',        [RevenueController::class, 'summary']);
-                    Route::get('revenue/export', [RevenueController::class, 'export']);
+                    Route::get('revenue/daily',   [RevenueController::class, 'daily']);
+                    Route::get('revenue/monthly', [RevenueController::class, 'monthly']);
+                    Route::get('revenue/export',  [RevenueController::class, 'export']);
+
+                    // Packs (grouped classes)
+                    Route::apiResource('groups', ClassGroupController::class);
+                    Route::post('groups/{group}/enroll', [ClassGroupEnrollmentController::class, 'enroll']);
+                    Route::get('group-enrollments',                     [ClassGroupEnrollmentController::class, 'index']);
+                    Route::patch('group-enrollments/{groupEnrollment}', [ClassGroupEnrollmentController::class, 'update']);
+                    Route::delete('group-enrollments/{groupEnrollment}', [ClassGroupEnrollmentController::class, 'destroy']);
+                    Route::get('group-payments/unpaid',            [ClassGroupPaymentController::class, 'unpaid']);
+                    Route::get('group-payments',                   [ClassGroupPaymentController::class, 'index']);
+                    Route::post('group-payments',                  [ClassGroupPaymentController::class, 'store']);
+                    Route::patch('group-payments/{groupPayment}',  [ClassGroupPaymentController::class, 'update']);
+                    Route::delete('group-payments/{groupPayment}', [ClassGroupPaymentController::class, 'destroy']);
                 });
                 // ── End course-school routes ──────────────────────────────────
 
