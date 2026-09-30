@@ -29,6 +29,7 @@ use App\Http\Controllers\Api\School\StudentProfileController;
 use App\Http\Controllers\Api\School\CoursePaymentController;
 use App\Http\Controllers\Api\School\TeacherCommissionController;
 use App\Http\Controllers\Api\School\StaffExpenseController;
+use App\Http\Controllers\Api\School\RefundController;
 use App\Http\Controllers\Api\School\PayrollController;
 use App\Http\Controllers\Api\School\AccountingController;
 use App\Http\Controllers\Api\School\TimetableSlotController;
@@ -62,6 +63,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/schools/{school}',     [SystemAdminController::class, 'showSchool']);
             Route::patch('/schools/{school}',   [SystemAdminController::class, 'updateSchool']);
             Route::delete('/schools/{school}',  [SystemAdminController::class, 'destroySchool']);
+            Route::post('/schools/{school}/reset', [SystemAdminController::class, 'resetSchool']);
             Route::patch('/schools/{school}/subscription', [SystemAdminController::class, 'updateSubscription']);
 
             Route::get('/plans',                     [SystemAdminController::class, 'plans']);
@@ -194,14 +196,21 @@ Route::prefix('v1')->group(function () {
                 Route::get('students',                    [StudentProfileController::class, 'index']);
                 Route::get('students/{student}',          [StudentProfileController::class, 'show']);
                 Route::patch('students/{student}',        [StudentProfileController::class, 'update']);
+                Route::delete('students/{student}',       [StudentProfileController::class, 'destroy']);
                 Route::get('students/{student}/payments', [PaymentController::class, 'studentSummary']);
                 Route::get('students/{student}/classes',  [StudentProfileController::class, 'classes']);
+                Route::get('students/{student}/enrollments', [StudentProfileController::class, 'enrollments']);
 
                 // (Attendance routes moved to shared owner|admin|teacher group below)
 
                 // Staff expenses (general: transport, supplies, etc.)
                 Route::get('expenses/report',          [StaffExpenseController::class, 'report']);
                 Route::apiResource('expenses',         StaffExpenseController::class)->except(['show']);
+
+                // Refunds (money paid back to a student for an enrollment)
+                Route::get('refunds',             [RefundController::class, 'index']);
+                Route::post('refunds',            [RefundController::class, 'store']);
+                Route::delete('refunds/{refund}', [RefundController::class, 'destroy']);
 
                 // Payroll (salaries, advances, bonuses)
                 Route::get('payroll',                          [PayrollController::class, 'index']);
@@ -262,7 +271,7 @@ Route::prefix('v1')->group(function () {
             });
 
             // Files: teachers can upload; all roles can list/view/download
-            Route::middleware(['role:school_owner|admin|teacher|student'])->prefix('school')->group(function () {
+            Route::middleware(['role:school_owner|admin|teacher|student', 'files.access'])->prefix('school')->group(function () {
                 Route::get('files',                  [FileController::class, 'index']);
                 Route::post('files',                 [FileController::class, 'store']);
                 Route::get('files/{file}',           [FileController::class, 'show']);
@@ -306,11 +315,32 @@ Route::prefix('v1')->group(function () {
     Route::middleware(['auth:sanctum', 'role:school_owner|admin', \App\Http\Middleware\SetTenantContext::class])
         ->get('school/expiry-status', function (\Illuminate\Http\Request $request) {
             $school = $request->user()->school;
-            if (!$school || !$school->subscription_ends_at) {
-                return response()->json(['days_remaining' => null, 'status' => 'no_subscription']);
+            if (!$school) {
+                return response()->json(['state' => 'none', 'days_remaining' => null]);
             }
-            $days   = (int) now()->diffInDays($school->subscription_ends_at, false);
-            $status = $days < 0 ? 'expired' : ($days <= 7 ? 'critical' : ($days <= 30 ? 'warning' : 'ok'));
-            return response()->json(['days_remaining' => $days, 'status' => $status]);
+
+            $disabled = in_array($school->status, ['suspended', 'cancelled'], true);
+            // Prefer a real subscription end; fall back to the trial end date.
+            $end     = $school->subscription_ends_at ?? $school->trial_ends_at;
+            $isTrial = $school->status === 'trial' || (!$school->subscription_ends_at && $school->trial_ends_at);
+            $days    = $end ? (int) now()->diffInDays($end, false) : null;
+
+            $state = $disabled ? 'disabled'
+                : ($end === null ? 'no_subscription'
+                : ($days < 0 ? 'expired'
+                : ($days <= 7 ? 'critical'
+                : ($days <= 30 ? 'warning' : 'ok'))));
+
+            return response()->json([
+                'state'                => $state,
+                'school_status'        => $school->status,
+                'is_trial'             => (bool) $isTrial,
+                'trial_ends_at'        => optional($school->trial_ends_at)->toDateString(),
+                'subscription_ends_at' => optional($school->subscription_ends_at)->toDateString(),
+                'effective_end'        => optional($end)->toDateString(),
+                'days_remaining'       => $days,
+                // kept for backward compatibility with older clients
+                'status'               => $state,
+            ]);
         });
 });

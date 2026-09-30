@@ -8,6 +8,7 @@ use App\Models\ClassGroupPayment;
 use App\Models\CourseEnrollment;
 use App\Models\CoursePayment;
 use App\Models\PayrollEntry;
+use App\Models\Refund;
 use App\Models\StaffExpense;
 use App\Models\User;
 use App\Services\CourseRevenueService;
@@ -174,15 +175,24 @@ class RevenueController extends Controller
             'count'  => $grp->count(),
         ])->sortKeys()->values();
 
-        // ── Spending this month (staff expenses) ───────────────────────────
-        $expensesByDay = StaffExpense::where('school_id', $school->id)
-            ->whereYear('expense_date', $year)
-            ->whereMonth('expense_date', $month)
+        // ── Spending this month (staff expenses + refunds) ─────────────────
+        $spend = collect();
+
+        StaffExpense::where('school_id', $school->id)
+            ->whereYear('expense_date', $year)->whereMonth('expense_date', $month)
             ->get(['expense_date', 'amount'])
-            ->groupBy(fn ($e) => Carbon::parse($e->expense_date)->format('Y-m-d'))
+            ->each(fn ($e) => $spend->push(['date' => Carbon::parse($e->expense_date)->format('Y-m-d'), 'amount' => (float) $e->amount]));
+
+        Refund::where('school_id', $school->id)
+            ->whereYear('refunded_at', $year)->whereMonth('refunded_at', $month)
+            ->get(['refunded_at', 'amount'])
+            ->each(fn ($r) => $spend->push(['date' => Carbon::parse($r->refunded_at)->format('Y-m-d'), 'amount' => (float) $r->amount]));
+
+        $expensesByDay = $spend
+            ->groupBy('date')
             ->map(fn ($grp, $date) => [
                 'date'   => $date,
-                'amount' => round($grp->sum(fn ($e) => (float) $e->amount), 2),
+                'amount' => round($grp->sum('amount'), 2),
                 'count'  => $grp->count(),
             ])->sortKeys()->values();
 
@@ -292,6 +302,24 @@ class RevenueController extends Controller
                 'label'  => $e->user?->name ?? '—',
                 'detail' => $payrollLabels[$e->type] ?? $e->type,
                 'amount' => (float) $e->total_amount,
+            ]));
+
+        Refund::where('school_id', $school->id)
+            ->whereYear('refunded_at', $year)->whereMonth('refunded_at', $month)
+            ->with([
+                'studentProfile.user:id,name',
+                'courseEnrollment.courseClass:id,name',
+                'classGroupEnrollment.group:id,name',
+            ])
+            ->get()
+            ->each(fn ($r) => $spending->push([
+                'date'   => Carbon::parse($r->refunded_at)->format('Y-m-d'),
+                'type'   => 'refund',
+                'label'  => $r->studentProfile?->user?->name ?? '—',
+                'detail' => $r->courseEnrollment?->courseClass?->name
+                            ?? $r->classGroupEnrollment?->group?->name
+                            ?? $r->reason,
+                'amount' => (float) $r->amount,
             ]));
 
         $spending = $spending->sortBy(fn ($s) => $s['date'] ?? '9999-99-99')->values();
