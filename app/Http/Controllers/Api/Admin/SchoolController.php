@@ -38,6 +38,7 @@ class SchoolController extends Controller
             'school_type'             => 'sometimes|in:regular,course,both',
             'students_access_enabled' => 'sometimes|boolean',
             'teachers_access_enabled' => 'sometimes|boolean',
+            'files_access_enabled'    => 'sometimes|boolean',
         ]);
 
         $school->update($data);

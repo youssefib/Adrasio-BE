@@ -28,6 +28,7 @@ class School extends Model
         'school_type',
         'students_access_enabled',
         'teachers_access_enabled',
+        'files_access_enabled',
         'trial_ends_at',
         'subscription_ends_at',
     ];
@@ -41,6 +42,7 @@ class School extends Model
             'subscription_ends_at'    => 'datetime',
             'students_access_enabled' => 'boolean',
             'teachers_access_enabled' => 'boolean',
+            'files_access_enabled'    => 'boolean',
         ];
     }
 

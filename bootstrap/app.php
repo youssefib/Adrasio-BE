@@ -19,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role'          => \App\Http\Middleware\RequireRole::class,
             'permission'    => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'portal.access' => \App\Http\Middleware\EnsurePortalAccess::class,
+            'files.access'  => \App\Http\Middleware\EnsureFilesEnabled::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

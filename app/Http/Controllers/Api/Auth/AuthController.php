@@ -76,9 +76,9 @@ class AuthController extends Controller
         }
 
         if (! $user->isSystemAdmin() && $user->school) {
-            if (in_array($user->school->status, ['suspended', 'cancelled'])) {
-                return response()->json(['message' => 'School account is inactive.', 'code' => 'SCHOOL_INACTIVE'], 403);
-            }
+            // Note: suspended/cancelled schools may still sign in — the frontend
+            // routes them to a read-only account-status page (dashboard blocked
+            // server-side by EnsureSchoolIsActive).
 
             // Per-school portal switches: block disabled teachers/students at login.
             if ($user->role === 'teacher' && ! $user->school->teachers_access_enabled) {
